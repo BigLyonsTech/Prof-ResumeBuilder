@@ -36,6 +36,9 @@ COPY backend/mvnw .
 COPY backend/.mvn .mvn
 COPY backend/pom.xml .
 
+# Fix execute permission (Windows commits strip Unix permissions)
+RUN chmod +x mvnw
+
 # Download dependencies (cached layer — only re-runs if pom.xml changes)
 RUN ./mvnw dependency:go-offline -B
 
