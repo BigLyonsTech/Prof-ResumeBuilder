@@ -1,0 +1,22 @@
+# ─── Secrets (NEVER commit) ───────────────────
+.env
+
+# ─── Java / Maven ─────────────────────────────
+target/
+*.class
+*.jar
+
+# ─── Node / React ─────────────────────────────
+node_modules/
+dist/
+.vite/
+
+# ─── IDE ──────────────────────────────────────
+.idea/
+*.iml
+.vscode/
+
+# ─── OS ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
