@@ -1,80 +1,114 @@
 # ============================================================
-#   ProfResumeBuilder — Single Container Dockerfile
+
+# ProfResumeBuilder - Single Container Dockerfile
+
 #
-#   Stage 1 (node-builder)  → builds the React frontend
-#   Stage 2 (java-builder)  → copies React output + compiles Spring Boot JAR
-#   Stage 3 (runtime)       → runs only the final JAR
+
+# Stage 1: Build React Frontend
+
+# Stage 2: Build Spring Boot JAR
+
+# Stage 3: Run Application
+
 #
-#   Result: ONE container, ONE port (8080)
-#   Spring Boot serves both the API (/api/**) and the
-#   React app (everything else via /static/index.html)
+
+# React + Spring Boot + MongoDB Atlas
+
+# Deployment Target: Render.com
+
 # ============================================================
 
+# ------------------------------------------------------------
 
-# ── Stage 1: Build React Frontend ───────────────────────────
+# Stage 1: Build React Frontend
+
+# ------------------------------------------------------------
+
 FROM node:20-alpine AS node-builder
 
 WORKDIR /frontend
 
-# Copy package files and install dependencies
-COPY frontend/package.json .
+# Copy package files
+
+COPY frontend/package*.json ./
+
+# Install dependencies
+
 RUN npm install --legacy-peer-deps
 
-# Copy source and build production bundle
+# Copy frontend source
+
 COPY frontend/ .
+
+# Build React production bundle
+
 RUN npm run build
-# Output: /frontend/dist/
 
+# ------------------------------------------------------------
 
-# ── Stage 2: Build Spring Boot JAR ──────────────────────────
-FROM eclipse-temurin:17-jdk-alpine AS java-builder
+# Stage 2: Build Spring Boot Application
+
+# ------------------------------------------------------------
+
+FROM maven:3.9.9-eclipse-temurin-17-alpine AS java-builder
 
 WORKDIR /app
 
-# Copy Maven wrapper
-COPY backend/mvnw .
-COPY backend/.mvn .mvn
+# Copy Maven configuration first for caching
+
 COPY backend/pom.xml .
 
-# Fix execute permission (Windows commits strip Unix permissions)
-RUN chmod +x mvnw
+# Download dependencies
 
-# Download dependencies (cached layer — only re-runs if pom.xml changes)
-RUN ./mvnw dependency:go-offline -B
+RUN mvn dependency:go-offline -B
 
 # Copy backend source
+
 COPY backend/src ./src
 
-# Copy React build output into Spring Boot static resources
-# Spring Boot will serve these files at the root URL
+# Copy React build into Spring Boot static resources
+
 COPY --from=node-builder /frontend/dist ./src/main/resources/static
 
-# Build the JAR (skip tests for Docker build speed)
-RUN ./mvnw clean package -DskipTests -B
-# Output: /app/target/prof-resume-builder-0.0.1-SNAPSHOT.jar
+# Build executable jar
 
+RUN mvn clean package -DskipTests -B
 
-# ── Stage 3: Runtime ────────────────────────────────────────
-FROM eclipse-temurin:17-jre-alpine AS runtime
+# ------------------------------------------------------------
+
+# Stage 3: Runtime
+
+# ------------------------------------------------------------
+
+FROM eclipse-temurin:17-jre-alpine
 
 WORKDIR /app
 
-# Security: run as non-root user
+# Create non-root user
+
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Copy only the JAR — no build tools, no source code
+# Copy application jar
+
 COPY --from=java-builder /app/target/*.jar app.jar
 
 RUN chown appuser:appgroup app.jar
+
 USER appuser
 
-# Expose Spring Boot port
+# Render uses PORT environment variable
+
+ENV PORT=8080
+
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/resumes || exit 1
+# Optional health check
 
-# Pass MONGODB_URI as environment variable at runtime:
-# docker run -e MONGODB_URI="mongodb+srv://..." prof-resume-builder
-ENTRYPOINT ["java", "-jar", "app.jar"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 
+CMD wget -q --spider [http://localhost:${PORT}/api/resumes](http://localhost:${PORT}/api/resumes) || exit 1
+
+# MongoDB Atlas URI should be supplied in Render Environment Variables:
+
+# MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/database
+
+ENTRYPOINT ["java","-jar","app.jar"]
